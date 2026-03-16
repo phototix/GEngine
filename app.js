@@ -3,6 +3,15 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const app = document.getElementById("app");
 const cta = document.getElementById("cta");
+const panel = document.getElementById("panel");
+const statusLine = document.createElement("p");
+statusLine.id = "status";
+statusLine.textContent = "Loading character...";
+panel.appendChild(statusLine);
+
+const setStatus = (message) => {
+    statusLine.textContent = message;
+};
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -55,10 +64,10 @@ player.position.set(0, 0, 0);
 scene.add(player);
 
 const cameraPivot = new THREE.Object3D();
-cameraPivot.position.set(0, 1.6, 0);
+cameraPivot.position.set(0, 1.28, 0);
 player.add(cameraPivot);
 cameraPivot.add(camera);
-const baseCameraDistance = 4.5;
+const baseCameraDistance = 3.0;
 const minCameraDistance = baseCameraDistance * 0.5;
 const maxCameraDistance = baseCameraDistance * 2.0;
 let cameraDistance = baseCameraDistance;
@@ -66,9 +75,51 @@ camera.position.set(0, 0.2, cameraDistance);
 
 const gltfLoader = new GLTFLoader();
 const modelPaths = [
+    "./assets/characters/girl_003.glb",
+    "./assets/characters/girl_004.glb",
     "./assets/characters/girl_001.glb",
     "./assets/characters/girl_002.glb"
 ];
+
+let mixer = null;
+const actions = {};
+let activeAction = null;
+let activeActionTimeScale = 1;
+
+const findClipByKeywords = (clips, keywords) => {
+    const lower = keywords.map((word) => word.toLowerCase());
+    return clips.find((clip) => {
+        const name = clip.name.toLowerCase();
+        return lower.some((word) => name.includes(word));
+    });
+};
+
+const playAction = (action, timeScale = 1) => {
+    if (!action) return;
+    action.reset();
+    action.setEffectiveWeight(1);
+    action.timeScale = timeScale;
+    action.paused = timeScale === 0;
+    action.play();
+};
+
+const setActiveAction = (action, timeScale = 1) => {
+    if (!action) return;
+    if (activeAction === action) {
+        if (activeActionTimeScale !== timeScale) {
+            activeAction.timeScale = timeScale;
+            activeAction.paused = timeScale === 0;
+            activeActionTimeScale = timeScale;
+        }
+        return;
+    }
+    if (activeAction) {
+        activeAction.fadeOut(0.15);
+    }
+    playAction(action, timeScale);
+    activeAction = action;
+    activeActionTimeScale = timeScale;
+};
 
 const loadModel = async () => {
     for (const path of modelPaths) {
@@ -90,6 +141,34 @@ const loadModel = async () => {
             model.position.y = -box.min.y;
             model.rotation.y = Math.PI;
             player.add(model);
+
+            if (gltf.animations && gltf.animations.length > 0) {
+                mixer = new THREE.AnimationMixer(model);
+
+                const clips = gltf.animations;
+                const defaultClip = clips[0];
+                const idleClip = findClipByKeywords(clips, ["idle", "tpose", "rest", "stand"]) || defaultClip;
+                const walkClip = findClipByKeywords(clips, ["walk", "move"]) || defaultClip;
+                const runClip = findClipByKeywords(clips, ["run", "sprint"]);
+                const backClip = findClipByKeywords(clips, ["back", "backward", "reverse"]);
+                const turnLeftClip = findClipByKeywords(clips, ["turnleft", "turn_left", "left", "rotateleft"]);
+                const turnRightClip = findClipByKeywords(clips, ["turnright", "turn_right", "right", "rotateright"]);
+
+                actions.idle = mixer.clipAction(idleClip);
+                actions.walk = mixer.clipAction(walkClip);
+                actions.run = runClip ? mixer.clipAction(runClip) : actions.walk;
+                actions.walkBack = backClip ? mixer.clipAction(backClip) : actions.walk;
+                actions.turnLeft = turnLeftClip ? mixer.clipAction(turnLeftClip) : actions.idle;
+                actions.turnRight = turnRightClip ? mixer.clipAction(turnRightClip) : actions.idle;
+
+                setActiveAction(actions.idle, 1);
+                const clipNames = clips.map((clip) => clip.name || "(unnamed)").join(", ");
+                console.info("Loaded animations:", clipNames);
+                setStatus(`Animations loaded: ${clipNames}`);
+            } else {
+                console.warn("No animations found in GLB. Model will remain in T-pose.");
+                setStatus("No animations found in GLB. Model will remain in T-pose.");
+            }
             return;
         } catch (error) {
             console.warn("Failed to load model", path, error);
@@ -204,11 +283,24 @@ const updateMovement = (delta) => {
         velocity.y = 0;
         isGrounded = true;
     }
+
+        if (mixer) {
+            const isMoving =
+                keys.has("KeyW") ||
+                keys.has("KeyS") ||
+                keys.has("KeyA") ||
+                keys.has("KeyD");
+
+            setActiveAction(actions.walk, isMoving ? 1 : 0);
+        }
 };
 
 const animate = () => {
     const delta = Math.min(clock.getDelta(), 0.05);
     updateMovement(delta);
+    if (mixer) {
+        mixer.update(delta);
+    }
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
 };
