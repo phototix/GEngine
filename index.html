@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>GEngine - 3rd Person Demo</title>
+		<link rel="stylesheet" href="./style.css" />
+	</head>
+	<body>
+		<div id="app">
+			<div id="hud">
+				<div id="panel">
+					<h1>GEngine - 3rd Person Demo</h1>
+					<p>WASD to move · Mouse to look · Space to jump · Hold Shift to run</p>
+					<p>Click the scene to lock the cursor.</p>
+				</div>
+				<div id="cta">Click to play</div>
+			</div>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+					"three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+				}
+			}
+		</script>
+		<script type="module" src="./app.js"></script>
+	</body>
+</html>
